@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>last_value Viewer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Chart.js solo para el histórico -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --fg:#e5e7eb; --acc:#22d3ee; --ok:#22c55e; --err:#ef4444; }
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1022,#0f172a 30%);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Ubuntu,Arial}
+    header{padding:20px 16px;border-bottom:1px solid #1f2937;display:flex;gap:12px;align-items:center}
+    header h1{margin:0;font-size:20px}
+    header .pill{padding:6px 10px;border-radius:999px;background:#0b1220;border:1px solid #1f2937;font-size:12px;color:var(--muted)}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 16px;display:grid;gap:16px}
+    .card{background:rgba(17,24,39,.7);backdrop-filter:blur(6px);border:1px solid #1f2937;border-radius:16px;padding:16px}
+    .row{display:grid;gap:12px}
+    @media(min-width:880px){.row{grid-template-columns:1.2fr 1fr}}
+    label{font-size:12px;color:var(--muted)}
+    input,select,textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #233047;background:#0b1220;color:var(--fg)}
+    textarea{min-height:88px;resize:vertical}
+    .btn{cursor:pointer;border:1px solid #233047;background:#0b1220;color:var(--fg);padding:10px 14px;border-radius:12px}
+    .btn:hover{border-color:#2f3c58}
+    .btn.primary{background:linear-gradient(90deg,#06b6d4,#3b82f6);border:none}
+    .grid{overflow:auto;border:1px solid #233047;border-radius:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;border-bottom:1px solid #233047;text-align:left;font-size:14px}
+    th{position:sticky;top:0;background:#0f172a;z-index:1}
+    pre{background:#0b1220;border:1px solid #233047;border-radius:12px;padding:12px;overflow:auto;max-height:320px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab{padding:8px 12px;border-radius:10px;border:1px solid #233047;cursor:pointer;color:var(--muted)}
+    .tab.active{border-color:var(--acc);color:#e6fbff;box-shadow:0 0 0 1px #0aa3b5 inset}
+    .status{font-size:12px}
+    .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .two{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+    .hint{color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>last_value Viewer</h1>
+    <span class="pill" id="base-pill">Base: detectando…</span>
+    <span class="pill" id="health-pill">/health: —</span>
+  </header>
+
+  <div class="wrap">
+    <!-- Tabs -->
+    <div class="card">
+      <div class="tabs" id="tabs">
+        <div class="tab active" data-tab="last">Último valor</div>
+        <div class="tab" data-tab="range">Histórico por tiempo</div>
+        <div class="tab" data-tab="many">Múltiples dp_id</div>
+      </div>
+    </div>
+
+    <!-- Paneles -->
+    <div class="card" id="panel-last">
+      <h3>Último valor</h3>
+      <div class="two">
+        <div>
+          <label>dp_id</label>
+          <input id="last-dp" type="number" placeholder="Ej. 1001" />
+        </div>
+        <div>
+          <label>el_id</label>
+          <input id="last-el" type="number" placeholder="Opcional si usas dp_id" />
+        </div>
+      </div>
+      <div class="two" style="margin-top:8px">
+        <div>
+          <label>order_col</label>
+          <select id="last-order">
+            <option value="system_time">system_time</option>
+            <option value="original_time">original_time</option>
+            <option value="default_time">default_time</option>
+          </select>
+        </div>
+        <div class="hint" style="align-self:end">
+          Usa **uno**: dp_id <em>o</em> el_id. Si pones ambos, se prioriza dp_id.
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btn-last">Consultar /api/last</button>
+        <button class="btn" id="btn-value">Consultar /value (dp_id+el_id)</button>
+      </div>
+
+      <h4>Resultado</h4>
+      <div class="grid" id="last-table"></div>
+      <h4>JSON</h4>
+      <pre id="last-json">{}</pre>
+    </div>
+
+    <div class="card" id="panel-range" style="display:none">
+      <h3>Histórico por tiempo</h3>
+      <div class="two">
+        <div>
+          <label>dp_id</label>
+          <input id="range-dp" type="number" placeholder="Ej. 1001" />
+        </div>
+        <div>
+          <label>order_col</label>
+          <select id="range-order">
+            <option value="system_time">system_time</option>
+            <option value="original_time">original_time</option>
+            <option value="default_time">default_time</option>
+          </select>
+        </div>
+      </div>
+      <div class="two" style="margin-top:8px">
+        <div>
+          <label>Inicio</label>
+          <input id="range-start" type="datetime-local" />
+        </div>
+        <div>
+          <label>Fin</label>
+          <input id="range-end" type="datetime-local" />
+        </div>
+      </div>
+      <div style="margin-top:8px;max-width:220px">
+        <label>Limite</label>
+        <input id="range-limit" type="number" value="100" />
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btn-range">Consultar /api/by_time</button>
+      </div>
+
+      <h4>Resultado</h4>
+      <div class="grid" id="range-table"></div>
+      <h4>Gráfico</h4>
+      <canvas id="range-chart"></canvas>
+      <h4>JSON</h4>
+      <pre id="range-json">[]</pre>
+    </div>
+
+    <div class="card" id="panel-many" style="display:none">
+      <h3>Múltiples dp_id</h3>
+      <label>Lista de dp_id (separados por coma o salto de línea)</label>
+      <textarea id="many-input" placeholder="1001,1002,1010"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="btn-many">Consultar /api/last_many</button>
+      </div>
+      <h4>Resultado</h4>
+      <div class="grid" id="many-table"></div>
+      <h4>JSON</h4>
+      <pre id="many-json">{}</pre>
+    </div>
+
+    <div class="card">
+      <h3>Diagnóstico</h3>
+      <div class="status" id="diag"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==== Config base URL ====
+    const fallbackBase = "http://127.0.0.1:8000";
+    // Si se sirve con uvicorn (mismo origen), usa location.origin; si abres el HTML local, usa fallback.
+    const BASE_URL = (location.origin.startsWith("http") && location.origin !== "null") ? location.origin : fallbackBase;
+
+    // UI bits
+    const basePill  = document.getElementById("base-pill");
+    const healthPill= document.getElementById("health-pill");
+    const diag      = document.getElementById("diag");
+
+    basePill.textContent = "Base: " + BASE_URL;
+
+    // ==== Helpers ====
+    const qs = s => document.querySelector(s);
+
+    function toTable(containerId, rows) {
+      const el = document.getElementById(containerId);
+      if (!rows || (Array.isArray(rows) && rows.length === 0)) {
+        el.innerHTML = "<div style='padding:12px;color:#94a3b8'>Sin datos</div>";
+        return;
+      }
+      let arr = Array.isArray(rows) ? rows : [rows];
+      const cols = [...new Set(arr.flatMap(o => Object.keys(o||{})))];
+      const thead = "<thead><tr>"+cols.map(c=>`<th>${c}</th>`).join("")+"</tr></thead>";
+      const tbody = "<tbody>"+arr.map(r=>"<tr>"+cols.map(c=>`<td>${(r?.[c] ?? "")}</td>`).join("")+"</tr>").join("")+"</tbody>";
+      el.innerHTML = `<table>${thead}${tbody}</table>`;
+    }
+
+    function pretty(id, data) {
+      qs(id).textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function getJSON(path, params={}) {
+      const url = new URL(BASE_URL + path);
+      Object.entries(params).forEach(([k,v])=>{
+        if (v === undefined || v === null || v === "") return;
+        if (Array.isArray(v)) v.forEach(val=>url.searchParams.append(k, val));
+        else url.searchParams.set(k, v);
+      });
+      const r = await fetch(url, { method:"GET" });
+      if (!r.ok) throw new Error(`/GET ${path}: ${r.status} ${r.statusText}`);
+      return r.json();
+    }
+
+    // ==== Tabs ====
+    const tabs = document.getElementById("tabs");
+    const panels = {
+      last:  document.getElementById("panel-last"),
+      range: document.getElementById("panel-range"),
+      many:  document.getElementById("panel-many"),
+    };
+    tabs.addEventListener("click", e=>{
+      const t = e.target.closest(".tab"); if(!t) return;
+      [...tabs.children].forEach(x=>x.classList.toggle("active", x===t));
+      const key = t.dataset.tab;
+      Object.entries(panels).forEach(([k,el])=>el.style.display = (k===key) ? "" : "none");
+    });
+
+    // ==== Health check ====
+    (async ()=>{
+      try{
+        const j = await getJSON("/health");
+        healthPill.textContent = j.db_exists ? "/health: OK" : "/health: DB no encontrada";
+        healthPill.classList.add(j.db_exists? "ok":"err");
+        diag.innerHTML = `
+          <div>db_path: <code>${j.db_path}</code></div>
+          <div>db_exists: <strong>${j.db_exists}</strong></div>
+        `;
+      }catch(err){
+        healthPill.textContent = "/health: error";
+        healthPill.classList.add("err");
+        diag.textContent = err.message;
+      }
+    })();
+
+    // ==== Último valor (/api/last y /value) ====
+    qs("#btn-last").addEventListener("click", async ()=>{
+      const dp = qs("#last-dp").value.trim();
+      const el = qs("#last-el").value.trim();
+      const order = qs("#last-order").value;
+      const params = { order_col: order };
+      if (dp) params.dp_id = Number(dp);
+      else if (el) params.el_id = Number(el);
+      else { alert("Ingresa dp_id o el_id"); return; }
+
+      try{
+        const data = await getJSON("/api/last", params);
+        toTable("last-table", data);
+        pretty("#last-json", data);
+      }catch(err){ alert(err.message); }
+    });
+
+    qs("#btn-value").addEventListener("click", async ()=>{
+      const dp = qs("#last-dp").value.trim();
+      const el = qs("#last-el").value.trim();
+      if(!dp || !el){ alert("Para /value necesitas dp_id y el_id"); return; }
+      try{
+        const data = await getJSON("/value", { dp_id:Number(dp), el_id:Number(el) });
+        toTable("last-table", data);
+        pretty("#last-json", data);
+      }catch(err){ alert(err.message); }
+    });
+
+    // ==== Histórico (/api/by_time) ====
+    let chart;
+    function renderChart(rows, xKey) {
+      const ctx = document.getElementById("range-chart");
+      if(chart) chart.destroy();
+      const labels = rows.map(r => r[xKey]);
+      // Intentar convertir 'value' a número si es posible
+      const vals = rows.map(r => {
+        const v = r.value;
+        const num = Number(v);
+        return Number.isFinite(num) ? num : null;
+      });
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'value', data: vals, tension: 0.2, pointRadius: 2 }] },
+        options: {
+          maintainAspectRatio: false,
+          responsive: true,
+          scales: { x: { ticks: { maxRotation: 0, autoSkip: true } }, y: { beginAtZero: false } },
+          plugins: { legend: { display: true } }
+        }
+      });
+      // Ajustar alto para que se vea bien
+      ctx.parentElement.style.height = "340px";
+    }
+
+    qs("#btn-range").addEventListener("click", async ()=>{
+      const dp = qs("#range-dp").value.trim();
+      const order = qs("#range-order").value;
+      const start = qs("#range-start").value;
+      const end   = qs("#range-end").value;
+      const limit = Number(qs("#range-limit").value || 100);
+      if(!dp){ alert("Ingresa dp_id"); return; }
+      try{
+        // Transformar datetime-local (YYYY-MM-DDTHH:mm) -> "YYYY-MM-DD HH:mm:00"
+        const tfix = s => s ? s.replace("T"," ") + ":00" : undefined;
+        const rows = await getJSON("/api/by_time", {
+          dp_id:Number(dp), order_col:order, limit,
+          start: tfix(start), end: tfix(end)
+        });
+        toTable("range-table", rows);
+        pretty("#range-json", rows);
+        if (rows && rows.length) renderChart(rows, order);
+      }catch(err){ alert(err.message); }
+    });
+
+    // ==== Múltiples (/api/last_many) ====
+    qs("#btn-many").addEventListener("click", async ()=>{
+      const raw = qs("#many-input").value;
+      const parts = raw.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
+      const dp_ids = parts.map(Number).filter(n=>Number.isFinite(n));
+      if(!dp_ids.length){ alert("Ingresa al menos un dp_id"); return; }
+      try{
+        const data = await getJSON("/api/last_many", { dp_ids });
+        // data es dict { dp_id: row|null }
+        const rows = Object.entries(data).map(([k,v])=> ({__dp_id: Number(k), ...(v||{})}));
+        toTable("many-table", rows);
+        pretty("#many-json", data);
+      }catch(err){ alert(err.message); }
+    });
+  </script>
+</body>
+</html>
